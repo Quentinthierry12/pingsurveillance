@@ -89,8 +89,8 @@ class SipAgent:
 
     # -- actions d'appel -----------------------------------------------------
 
-    def call(self, target_uri: str) -> None:
-        self._run(["dial", target_uri])
+    def call(self, target_uri: str) -> str:
+        return self._run(["dial", target_uri])
 
     def hangup(self) -> None:
         self.generic("terminate")
@@ -111,7 +111,9 @@ class SipAgent:
         """
         self.outbound_in_progress.set()
         try:
-            self.call(target_uri)
+            logger.info("État d'enregistrement avant appel: registered=%s", self.is_registered())
+            dial_output = self.call(target_uri)
+            logger.info("Résultat de 'dial %s': %s", target_uri, dial_output.strip())
             waited = 0.0
             interval = 1.0
             answered = False
@@ -123,7 +125,14 @@ class SipAgent:
                     break
 
             if not answered:
-                logger.warning("Pas de réponse à l'appel vers %s après %.0fs", target_uri, ring_timeout)
+                try:
+                    calls_state = self.generic("calls")
+                except Exception as e:
+                    calls_state = f"(diagnostic indisponible: {e})"
+                logger.warning(
+                    "Pas de réponse à l'appel vers %s après %.0fs. État des appels: %s",
+                    target_uri, ring_timeout, calls_state.strip() if isinstance(calls_state, str) else calls_state,
+                )
                 self.hangup()
                 return False
 

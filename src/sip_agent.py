@@ -58,7 +58,16 @@ class SipAgent:
         # linphonec en mode "fichiers wav" au lieu d'un device ALSA. C'est le mode
         # prévu par linphonec pour ce cas exact (cf. `help soundcard`), et ça évite
         # l'échec de `linphone_core_invite` qu'on avait avec la fausse carte ALSA null.
-        self.generic("soundcard use files")
+        logger.info("Résultat 'soundcard use files': %s", self.generic("soundcard use files").strip())
+        logger.info("État 'soundcard show': %s", self.generic("soundcard show").strip())
+        try:
+            logger.info("Aide 'webcam':\n%s", self.generic("help webcam").strip())
+        except Exception as e:
+            logger.warning("help webcam indisponible: %s", e)
+        try:
+            logger.info("Aide avancée:\n%s", self.generic("help advanced").strip())
+        except Exception as e:
+            logger.warning("help advanced indisponible: %s", e)
         self._ready = True
         logger.info("Agent SIP démarré et enregistré en tant que %s@%s", self.username, self.domain)
 

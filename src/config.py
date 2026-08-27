@@ -27,18 +27,11 @@ class AppConfig:
     failure_threshold: int = 3
     recovery_threshold: int = 2
     recall_interval_minutes: int = 15
-    call_retry_count: int = 3
-    call_retry_delay_seconds: int = 45
     services: list[ServiceConfig] = field(default_factory=list)
 
-    # SIP
-    sip_bot_username: str = ""
-    sip_bot_password: str = ""
-    sip_bot_domain: str = "sip.linphone.org"
-    sip_alert_target: str = ""
-
-    # TTS
-    piper_voice: str = "fr_FR-tom-medium"
+    # PagerDuty (déclenche les appels/notifications selon les règles de
+    # l'utilisateur configurées dans son compte PagerDuty)
+    pagerduty_routing_key: str = ""
 
     # API
     api_port: int = 8085
@@ -79,14 +72,8 @@ def load_config() -> AppConfig:
         failure_threshold=int(raw.get("failure_threshold", 3)),
         recovery_threshold=int(raw.get("recovery_threshold", 2)),
         recall_interval_minutes=int(raw.get("recall_interval_minutes", 15)),
-        call_retry_count=int(raw.get("call_retry_count", 3)),
-        call_retry_delay_seconds=int(raw.get("call_retry_delay_seconds", 45)),
         services=services,
-        sip_bot_username=os.environ.get("SIP_BOT_USERNAME", ""),
-        sip_bot_password=os.environ.get("SIP_BOT_PASSWORD", ""),
-        sip_bot_domain=os.environ.get("SIP_BOT_DOMAIN", "sip.linphone.org"),
-        sip_alert_target=os.environ.get("SIP_ALERT_TARGET", ""),
-        piper_voice=os.environ.get("PIPER_VOICE", "fr_FR-tom-medium"),
+        pagerduty_routing_key=os.environ.get("PAGERDUTY_ROUTING_KEY", ""),
         api_port=int(os.environ.get("API_PORT", "8085")),
         api_key=os.environ.get("API_KEY", ""),
         data_dir=Path(os.environ.get("DATA_DIR", "./data")),
@@ -96,12 +83,8 @@ def load_config() -> AppConfig:
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
 
     missing = []
-    if not cfg.sip_bot_username:
-        missing.append("SIP_BOT_USERNAME")
-    if not cfg.sip_bot_password:
-        missing.append("SIP_BOT_PASSWORD")
-    if not cfg.sip_alert_target:
-        missing.append("SIP_ALERT_TARGET")
+    if not cfg.pagerduty_routing_key:
+        missing.append("PAGERDUTY_ROUTING_KEY")
     if not cfg.api_key:
         missing.append("API_KEY")
     if missing:

@@ -1,5 +1,5 @@
-"""API HTTP légère : consultation du statut + mode test (déclenchement d'appels
-sans attendre une vraie panne)."""
+"""API HTTP légère : consultation du statut + mode test (déclenchement
+d'alertes PagerDuty sans attendre une vraie panne)."""
 from __future__ import annotations
 
 import threading
@@ -14,7 +14,7 @@ from status_store import StatusStore
 
 
 def create_app(cfg: AppConfig, store: StatusStore, alerting: Alerting, monitor: Monitor) -> FastAPI:
-    app = FastAPI(title="PingSurveillance", description="Surveillance de services + alertes vocales SIP")
+    app = FastAPI(title="PingSurveillance", description="Surveillance de services + alertes PagerDuty")
 
     def check_api_key(x_api_key: str = Header(default="")) -> None:
         if not cfg.api_key or x_api_key != cfg.api_key:
@@ -30,9 +30,9 @@ def create_app(cfg: AppConfig, store: StatusStore, alerting: Alerting, monitor: 
 
     @app.post("/test/call", dependencies=[Depends(check_api_key)])
     def test_call():
-        """Déclenche un appel de test réel (voix + décroché) sans lien avec une panne."""
+        """Déclenche une vraie alerte PagerDuty de test, sans lien avec une panne."""
         threading.Thread(target=alerting.trigger_test_call, daemon=True).start()
-        return {"ok": True, "message": "Appel de test lancé, décroche pour vérifier le rendu vocal."}
+        return {"ok": True, "message": "Alerte de test envoyée à PagerDuty."}
 
     @app.post("/test/simulate/{service_name}", dependencies=[Depends(check_api_key)])
     def simulate(service_name: str, state: str):

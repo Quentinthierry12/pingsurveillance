@@ -1,39 +1,43 @@
 # PingSurveillance
 
-Surveille des URLs de services (typiquement déployés sur Coolify) et t'alerte
-**par appel téléphonique SIP** (via Linphone) avec une voix de synthèse
-façon "assistant IA" quand un service tombe. Tu peux aussi **appeler le bot**
-pour qu'il te donne le statut de tout, et un **mode test** permet de
-déclencher des appels sans attendre une vraie panne.
+Surveille des URLs de services (typiquement déployés sur Coolify) et
+déclenche une **vraie alerte téléphonique** via PagerDuty quand un service
+tombe. Un **mode test** permet de déclencher une alerte sans attendre une
+vraie panne, et l'état de tous les services est consultable via une API HTTP.
 
 ## Comment ça marche
 
 - **Surveillance** ([src/monitor.py](src/monitor.py)) : ping HTTP périodique de chaque URL listée dans `config/services.yaml`, avec seuils anti-faux-positifs (X échecs consécutifs avant de déclarer "down").
-- **Voix** ([src/tts.py](src/tts.py)) : synthèse vocale 100% locale et gratuite avec [Piper](https://github.com/OHF-Voice/piper1-gpl), puis un léger traitement audio (ffmpeg) pour un rendu plus "robotique/assistant".
-- **Téléphonie** ([src/sip_agent.py](src/sip_agent.py)) : utilise `linphonec`/`linphonecsh` (paquet Debian `linphone-cli`), le moteur SIP de Linphone piloté par ligne de commande — pas besoin de l'appli graphique.
-- **Deux identités SIP distinctes** :
-  - un **compte "bot"** dédié (à créer), qui s'enregistre et passe/reçoit les appels automatisés ;
-  - **ton compte Linphone existant** (celui avec les notifications sur ton iPhone), que le bot appelle en cas d'alerte, et depuis lequel tu appelles le bot pour avoir le statut.
+- **Alertes** ([src/pagerduty.py](src/pagerduty.py), [src/alerting.py](src/alerting.py)) : envoie un événement à l'API Events v2 de PagerDuty à chaque changement d'état (panne / retour en ligne). C'est **PagerDuty qui t'appelle** ensuite, selon les règles de notification que tu configures sur ton compte (téléphone en priorité, avec escalade si tu ne réponds pas).
 - **API HTTP** ([src/api.py](src/api.py)) : consultation du statut en JSON + endpoints de test.
 
-## ⚠️ Ce qui n'a pas pu être testé ici
+## Pourquoi PagerDuty plutôt que Linphone/SIP ?
 
-Je n'ai ni compte SIP ni téléphone dans cet environnement de développement.
-Le code est écrit selon la documentation officielle de `linphonec`/`linphonecsh`,
-mais **deux points sont à valider une fois déployé** :
+La première version de cet outil pilotait un softphone SIP (`linphonec`) en
+ligne de commande pour appeler directement via un compte Linphone. Techniquement
+faisable sur le papier, mais en déploiement réel sur ce serveur, `linphonec`
+restait bloqué en état interne `LinphoneGlobalStartup` et l'enregistrement SIP
+n'aboutissait jamais (`LinphoneRegistrationNone`), malgré plusieurs correctifs
+(carte son factice, mode `soundcard use files`, etc.). Plutôt que de continuer
+à déboguer un softphone headless sans garantie de résultat, on est passé sur
+PagerDuty : gratuit jusqu'à 5 utilisateurs, appels téléphoniques fiables et
+intégrés, infrastructure déjà éprouvée à grande échelle.
 
-1. **La carte son "headless"** ([Dockerfile](Dockerfile)) : le conteneur n'a pas de vrai micro/haut-parleur. J'ai mis un device ALSA factice (`null`) pour que `linphonec` démarre sans planter, mais si l'appel/lecture audio échoue, regarde en premier `linphonecsh generic "soundcard list"` dans le conteneur.
-2. **Les noms exacts des commandes `linphonec`** ([src/sip_agent.py](src/sip_agent.py)) : `call`, `terminate`, `answer`, `autoanswer`, `play` sont documentés, mais leur syntaxe précise peut varier selon la version du paquet. Lance `linphonecsh generic "help"` dans le conteneur pour vérifier, et ajuste `sip_agent.py` si besoin.
-
-Le reste (ping, seuils, état, API, TTS, effets audio) est du code standard, testable dès maintenant sans matériel spécial.
+**Limite à connaître** : contrairement à l'idée initiale, tu ne peux pas
+"appeler le bot" pour avoir le statut à la voix — PagerDuty ne fait que
+t'appeler, pas l'inverse. Pour consulter le statut à la demande, utilise
+l'endpoint `GET /status` (voir plus bas).
 
 ## Mise en place
 
-### 1. Crée un compte SIP pour le "bot"
+### 1. Configure PagerDuty
 
-Le plus simple : ouvre l'appli Linphone (ou https://subscribe.linphone.org) et crée un **second** compte gratuit `sip.linphone.org`, différent de celui déjà sur ton iPhone. C'est ce compte que le programme utilisera pour appeler et répondre.
+1. Crée un compte sur [pagerduty.com](https://www.pagerduty.com/) (offre gratuite, jusqu'à 5 utilisateurs).
+2. Crée un **Service** (Services → Service Directory → New Service).
+3. Ajoute une intégration **Events API v2** à ce service, et récupère l'**Integration Key** (c'est ta `PAGERDUTY_ROUTING_KEY`).
+4. Dans ton profil (Settings → My Profile → Notifications) : configure une règle du type "Appelle-moi immédiatement" pour les incidents urgents, avec ton numéro de téléphone vérifié.
 
-### 2. Configure
+### 2. Configure le projet
 
 ```bash
 cp .env.example .env
@@ -41,15 +45,14 @@ cp config/services.example.yaml config/services.yaml
 ```
 
 Remplis `.env` :
-- `SIP_BOT_USERNAME` / `SIP_BOT_PASSWORD` / `SIP_BOT_DOMAIN` : le compte créé à l'étape 1.
-- `SIP_ALERT_TARGET` : ton adresse SIP existante, ex. `sip:tonpseudo@sip.linphone.org` (celle qui sonne sur ton iPhone).
+- `PAGERDUTY_ROUTING_KEY` : la clé d'intégration récupérée à l'étape 1.
 - `API_KEY` : un secret de ton choix pour protéger l'API HTTP.
 
 Édite `config/services.yaml` avec tes vraies URLs de services Coolify.
 
-⚠️ **Sur Coolify, la config est bakée dans l'image Docker** (committée dans le repo Git), pas montée en volume — un bind mount sur `/app/config` écrase le contenu de l'image par un dossier vide côté serveur et fait planter le démarrage (vécu en prod). Donc : `git add config/services.yaml`, commit, push, puis redéploie sur Coolify à chaque changement de la liste des services.
+⚠️ **Sur Coolify, la config est bakée dans l'image Docker** (committée dans le repo Git), pas montée en volume — un bind mount sur `/app/config` écrase le contenu de l'image par un dossier vide côté serveur et fait planter le démarrage (vécu en prod). Donc : `git add config/services.yaml`, commit, push, puis redéploie sur Coolify à chaque changement de la liste des services. Pense aussi à mettre à jour `CONFIG_PATH` sur `/app/config/services.yaml` (au lieu de `services.example.yaml`) une fois ton vrai fichier en place.
 
-### 3. Lance en local (test rapide sans Docker si tu as `linphone-cli` installé)
+### 3. Lance en local
 
 ```bash
 pip install -r requirements.txt
@@ -61,18 +64,19 @@ python src/main.py
 1. Pousse ce dossier sur un repo Git (GitHub/GitLab/etc.) — Coolify déploie depuis un repo.
 2. Dans Coolify : **New Resource → Docker Compose**, pointe vers ce repo (`docker-compose.yml` à la racine).
 3. Renseigne les variables d'environnement du `.env.example` dans l'onglet "Environment Variables" de Coolify (ne commite jamais le `.env` réel).
-4. Monte un volume persistant sur `/app/data` (déjà prévu dans `docker-compose.yml`) pour que l'état des services et les voix Piper téléchargées survivent aux redéploiements.
-5. Déploie. Regarde les logs pour confirmer `Agent SIP démarré et enregistré...`.
+4. Monte un volume persistant sur `/app/data` (déjà prévu dans `docker-compose.yml`) pour que l'état des services survive aux redéploiements.
+5. Déploie. Regarde les logs pour confirmer `API HTTP sur le port 8085`.
 
 ## Mode test
 
 Une fois lancé, l'API écoute sur `API_PORT` (8085 par défaut). Toutes les routes protégées attendent un header `X-API-Key: <ta clé>`.
 
 ```bash
-# Appel de test "à blanc" (vérifie toute la chaîne voix + décroché, sans lien avec une panne)
+# Alerte de test réelle (vérifie toute la chaîne : envoi PagerDuty + notification/appel),
+# auto-résolue après 5s pour ne pas laisser un faux incident ouvert
 curl -X POST http://localhost:8085/test/call -H "X-API-Key: $API_KEY"
 
-# Simuler une panne d'un service précis (déclenche un vrai appel d'alerte)
+# Simuler une panne d'un service précis (déclenche une vraie alerte PagerDuty)
 curl -X POST "http://localhost:8085/test/simulate/API%20principale?state=down" -H "X-API-Key: $API_KEY"
 
 # Simuler le retour en ligne
@@ -87,17 +91,7 @@ curl -X POST http://localhost:8085/test/check-now -H "X-API-Key: $API_KEY"
 
 ## Comportement des alertes
 
-- Un service doit échouer `failure_threshold` fois **de suite** avant d'être déclaré "down" (évite d'appeler pour un simple hoquet réseau).
-- À chaque changement d'état (down ou retour en ligne), un appel est passé, avec `call_retry_count` tentatives si tu ne décroches pas.
-- Si un service reste down, un rappel est passé toutes les `recall_interval_minutes` minutes tant que ce n'est pas résolu.
-- Tous ces réglages sont dans `config/services.yaml`.
-
-## Appeler pour avoir le statut
-
-Appelle simplement l'adresse SIP du compte "bot" depuis ton Linphone iPhone : il décroche automatiquement et te lit l'état de tous les services surveillés, puis raccroche.
-
-## Personnaliser la voix "Jarvis"
-
-- Change `PIPER_VOICE` dans `.env` pour une autre voix Piper (liste : https://github.com/OHF-Voice/piper1-gpl/blob/main/VOICES.md).
-- Ajuste la chaîne de filtres `JARVIS_FILTER_CHAIN` dans [src/tts.py](src/tts.py) (echo, filtrage, égalisation) — c'est la partie la plus "à l'oreille", pense à réécouter après chaque changement.
-- Le texte des messages est dans [src/alerting.py](src/alerting.py) et [src/inbound.py](src/inbound.py).
+- Un service doit échouer `failure_threshold` fois **de suite** avant d'être déclaré "down" (évite d'alerter pour un simple hoquet réseau).
+- À chaque changement d'état (down ou retour en ligne), un événement `trigger`/`resolve` est envoyé à PagerDuty avec une `dedup_key` par service, pour que les pannes/retours du même service soient bien reliés au même incident côté PagerDuty.
+- Les relances/escalades (rappeler si tu ne réponds pas, etc.) sont gérées **par PagerDuty lui-même**, configurables dans tes règles de notification — pas besoin de les gérer ici.
+- Tous les seuils sont dans `config/services.yaml`.

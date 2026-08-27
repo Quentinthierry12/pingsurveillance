@@ -1,5 +1,4 @@
-"""État courant de chaque service, partagé entre le monitor et l'agent SIP
-(pour répondre aux appels entrants "donne-moi le statut").
+"""État courant de chaque service, consulté via l'API HTTP /status.
 Persisté sur disque en JSON pour survivre à un redémarrage du conteneur.
 """
 from __future__ import annotations
@@ -67,40 +66,6 @@ class StatusStore:
             self._save()
             return st
 
-    def voice_report(self) -> str:
-        """Construit le texte (FR) lu au téléphone quand on appelle pour le statut."""
-        services = self.all()
-        if not services:
-            return "Aucun service n'est actuellement surveillé."
-
-        down = [s for s in services if not s.up]
-        if not down:
-            n = len(services)
-            return f"Tous les systèmes sont opérationnels. Les {n} services surveillés répondent normalement."
-
-        parts = [f"{len(down)} service{'s' if len(down) > 1 else ''} en panne."]
-        for s in down:
-            parts.append(f"{s.name}, hors ligne depuis {_human_since(s.since)}.")
-        up_count = len(services) - len(down)
-        if up_count:
-            parts.append(f"Les {up_count} autres services fonctionnent normalement.")
-        return " ".join(parts)
-
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _human_since(iso_ts: str) -> str:
-    try:
-        dt = datetime.fromisoformat(iso_ts)
-    except Exception:
-        return "un moment indéterminé"
-    delta = datetime.now(timezone.utc) - dt
-    minutes = int(delta.total_seconds() // 60)
-    if minutes < 1:
-        return "moins d'une minute"
-    if minutes < 60:
-        return f"{minutes} minute{'s' if minutes > 1 else ''}"
-    hours = minutes // 60
-    return f"{hours} heure{'s' if hours > 1 else ''}"

@@ -54,16 +54,13 @@ class SipAgent:
         )
         # Autoréponse activée : indispensable pour le mode "j'appelle et j'ai le statut".
         self.generic("autoanswer enable")
+        # Pas de vraie carte son dans ce conteneur (serveur headless) : on bascule
+        # linphonec en mode "fichiers wav" au lieu d'un device ALSA. C'est le mode
+        # prévu par linphonec pour ce cas exact (cf. `help soundcard`), et ça évite
+        # l'échec de `linphone_core_invite` qu'on avait avec la fausse carte ALSA null.
+        self.generic("soundcard use files")
         self._ready = True
         logger.info("Agent SIP démarré et enregistré en tant que %s@%s", self.username, self.domain)
-        try:
-            logger.info("Cartes son détectées: %s", self.generic("soundcard list").strip())
-        except Exception as e:
-            logger.warning("Impossible de lister les cartes son: %s", e)
-        try:
-            logger.info("Aide 'soundcard':\n%s", self.generic("help soundcard").strip())
-        except Exception as e:
-            logger.warning("Impossible de récupérer l'aide soundcard: %s", e)
 
     def _wait_daemon_ready(self, timeout: float) -> None:
         """Attend que le pipe vers le daemon linphonec soit disponible, au lieu

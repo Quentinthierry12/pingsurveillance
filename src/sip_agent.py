@@ -56,6 +56,10 @@ class SipAgent:
         self.generic("autoanswer enable")
         self._ready = True
         logger.info("Agent SIP démarré et enregistré en tant que %s@%s", self.username, self.domain)
+        try:
+            logger.info("Cartes son détectées: %s", self.generic("soundcard list").strip())
+        except Exception as e:
+            logger.warning("Impossible de lister les cartes son: %s", e)
 
     def _wait_daemon_ready(self, timeout: float) -> None:
         """Attend que le pipe vers le daemon linphonec soit disponible, au lieu

@@ -25,12 +25,33 @@ JARVIS_FILTER_CHAIN = (
 )
 
 
+def _ensure_voice(voice: str, data_dir: Path) -> None:
+    """Télécharge le modèle de voix Piper s'il n'est pas déjà présent.
+
+    Contrairement à ce que suggère la doc Piper généraliste, la CLI `piper`
+    ne télécharge PAS automatiquement une voix manquante : il faut appeler
+    `python -m piper.download_voices` explicitement au préalable.
+    """
+    data_dir.mkdir(parents=True, exist_ok=True)
+    if any(data_dir.glob(f"{voice}.onnx")):
+        return
+    logger.info("Voix Piper '%s' absente, téléchargement...", voice)
+    result = subprocess.run(
+        ["python3", "-m", "piper.download_voices", voice, "--data-dir", str(data_dir)],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Échec du téléchargement de la voix Piper '{voice}': {result.stderr.decode(errors='replace')}"
+        )
+
+
 def synthesize(text: str, out_path: Path, voice: str, data_dir: Path) -> Path:
     """Génère un wav à partir de texte via Piper, puis applique l'effet 'Jarvis'.
 
     Nécessite le binaire `piper` (paquet pip `piper-tts`) dans le PATH.
-    Le modèle de voix est téléchargé automatiquement au premier usage par piper-tts.
     """
+    _ensure_voice(voice, data_dir)
     raw_path = out_path.with_suffix(".raw.wav")
     out_path.parent.mkdir(parents=True, exist_ok=True)
 

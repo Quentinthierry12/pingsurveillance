@@ -35,7 +35,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
-COPY config/services.example.yaml ./config/services.example.yaml
+# Toute la config vient de l'image (pas de volume sur /app/config, voir
+# docker-compose.yml) : committe ton vrai config/services.yaml dans le repo
+# pour qu'il soit inclus ici, puis redéploie.
+COPY config/ ./config/
 
 RUN mkdir -p /app/data
 

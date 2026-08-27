@@ -7,5 +7,10 @@ services:
     ports:
       - "8085:8085"
     volumes:
-      - ./config:/app/config
+      # ⚠️ Pas de volume sur /app/config : sur Coolify, un bind mount sur un
+      # chemin relatif écrase le contenu baké dans l'image par un dossier
+      # vide côté serveur (vécu en prod : ça faisait planter le démarrage,
+      # services.example.yaml disparaissait). La config vient donc de l'image
+      # (committée dans le repo) ; pour la changer, édite config/*.yaml et
+      # redéploie.
       - ./data:/app/data

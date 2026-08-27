@@ -47,6 +47,8 @@ Remplis `.env` :
 
 Édite `config/services.yaml` avec tes vraies URLs de services Coolify.
 
+⚠️ **Sur Coolify, la config est bakée dans l'image Docker** (committée dans le repo Git), pas montée en volume — un bind mount sur `/app/config` écrase le contenu de l'image par un dossier vide côté serveur et fait planter le démarrage (vécu en prod). Donc : `git add config/services.yaml`, commit, push, puis redéploie sur Coolify à chaque changement de la liste des services.
+
 ### 3. Lance en local (test rapide sans Docker si tu as `linphone-cli` installé)
 
 ```bash

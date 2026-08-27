@@ -36,10 +36,10 @@ class SipAgent:
 
     # -- gestion du daemon -------------------------------------------------
 
-    def start(self) -> None:
+    def start(self, daemon_ready_timeout: float = 20.0) -> None:
         """Démarre le daemon linphonec et s'enregistre sur le compte SIP du bot."""
-        self._run(["init", "--no-rc"])
-        time.sleep(2)  # laisse le daemon démarrer avant d'envoyer des commandes
+        self._run(["init"])
+        self._wait_daemon_ready(daemon_ready_timeout)
         self._run(
             [
                 "register",
@@ -49,12 +49,29 @@ class SipAgent:
                 self.domain,
                 "--password",
                 self.password,
-            ]
+            ],
+            redact_from=6,  # masque la valeur du mot de passe (dernier élément) dans les logs/erreurs
         )
         # Autoréponse activée : indispensable pour le mode "j'appelle et j'ai le statut".
         self.generic("autoanswer enable")
         self._ready = True
         logger.info("Agent SIP démarré et enregistré en tant que %s@%s", self.username, self.domain)
+
+    def _wait_daemon_ready(self, timeout: float) -> None:
+        """Attend que le pipe vers le daemon linphonec soit disponible, au lieu
+        d'un sleep fixe qui masquerait un vrai échec de démarrage du daemon."""
+        deadline = time.time() + timeout
+        last_error = ""
+        while time.time() < deadline:
+            proc = subprocess.run([CMD, "generic", "help"], capture_output=True, text=True)
+            if proc.returncode == 0:
+                return
+            last_error = proc.stderr or proc.stdout
+            time.sleep(0.5)
+        raise RuntimeError(
+            f"Le daemon linphonec n'a pas répondu dans les {timeout:.0f}s après 'linphonecsh init'. "
+            f"Dernière erreur: {last_error}"
+        )
 
     def stop(self) -> None:
         try:
@@ -121,8 +138,11 @@ class SipAgent:
 
     # -- interne --------------------------------------------------------------
 
-    def _run(self, args: list[str], check: bool = True) -> str:
+    def _run(self, args: list[str], check: bool = True, redact_from: int | None = None) -> str:
         proc = subprocess.run([CMD, *args], capture_output=True, text=True)
         if check and proc.returncode != 0:
-            raise RuntimeError(f"linphonecsh {' '.join(args)} a échoué: {proc.stderr or proc.stdout}")
+            display_args = list(args)
+            if redact_from is not None:
+                display_args[redact_from:] = ["***"] * len(display_args[redact_from:])
+            raise RuntimeError(f"linphonecsh {' '.join(display_args)} a échoué: {proc.stderr or proc.stdout}")
         return proc.stdout

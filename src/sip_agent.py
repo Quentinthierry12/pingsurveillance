@@ -60,6 +60,10 @@ class SipAgent:
             logger.info("Cartes son détectées: %s", self.generic("soundcard list").strip())
         except Exception as e:
             logger.warning("Impossible de lister les cartes son: %s", e)
+        try:
+            logger.info("Aide linphonec complète:\n%s", self.generic("help").strip())
+        except Exception as e:
+            logger.warning("Impossible de récupérer l'aide: %s", e)
 
     def _wait_daemon_ready(self, timeout: float) -> None:
         """Attend que le pipe vers le daemon linphonec soit disponible, au lieu

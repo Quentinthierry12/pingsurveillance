@@ -1,0 +1,11 @@
+services:
+  pingsurveillance:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8085:8085"
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data

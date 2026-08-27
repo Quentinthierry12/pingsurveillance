@@ -1,0 +1,28 @@
+# Copie ce fichier en "services.yaml" et adapte-le à tes services Coolify.
+# Chaque entrée est une URL surveillée. Le nom sert dans les messages vocaux.
+
+check_interval_seconds: 30      # fréquence des pings
+failure_threshold: 3            # nb d'échecs CONSÉCUTIFS avant de déclarer "down" (évite les faux positifs)
+recovery_threshold: 2           # nb de succès consécutifs avant de déclarer "de retour en ligne"
+recall_interval_minutes: 15     # si un service reste down, on te rappelle toutes les X minutes
+call_retry_count: 3             # nb de tentatives d'appel si tu ne décroches pas
+call_retry_delay_seconds: 45    # délai entre deux tentatives d'appel
+
+services:
+  - name: "API principale"
+    url: "https://api.example.com/health"
+    method: GET
+    expected_status: 200
+    timeout_seconds: 5
+
+  - name: "Site vitrine"
+    url: "https://example.com"
+    method: GET
+    expected_status: 200
+    timeout_seconds: 5
+
+  - name: "Dashboard admin"
+    url: "https://admin.example.com"
+    method: GET
+    expected_status: 200
+    timeout_seconds: 5

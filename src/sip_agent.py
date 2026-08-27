@@ -68,6 +68,10 @@ class SipAgent:
             logger.info("Aide avancée:\n%s", self.generic("help advanced").strip())
         except Exception as e:
             logger.warning("help advanced indisponible: %s", e)
+        try:
+            logger.info("Codecs audio: %s", self.generic("codec").strip())
+        except Exception as e:
+            logger.warning("Impossible de lister les codecs: %s", e)
         self._ready = True
         logger.info("Agent SIP démarré et enregistré en tant que %s@%s", self.username, self.domain)
 
@@ -143,9 +147,15 @@ class SipAgent:
                     calls_state = self.generic("calls")
                 except Exception as e:
                     calls_state = f"(diagnostic indisponible: {e})"
+                try:
+                    states = self.generic("states")
+                except Exception as e:
+                    states = f"(diagnostic indisponible: {e})"
                 logger.warning(
-                    "Pas de réponse à l'appel vers %s après %.0fs. État des appels: %s",
-                    target_uri, ring_timeout, calls_state.strip() if isinstance(calls_state, str) else calls_state,
+                    "Pas de réponse à l'appel vers %s après %.0fs. État des appels: %s | États internes: %s",
+                    target_uri, ring_timeout,
+                    calls_state.strip() if isinstance(calls_state, str) else calls_state,
+                    states.strip() if isinstance(states, str) else states,
                 )
                 self.hangup()
                 return False
